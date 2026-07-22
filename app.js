@@ -30,7 +30,8 @@ const hotCitiesData = [
 
 // 口碑美食与旅行计划数据库 (由后端数据接口懒加载填充)
 let localCuisineAndItineraries = {};
-const STATIC_DATA_VERSION = "20260613_province_data_restore_v1";
+const STATIC_DATA_VERSION = "20260722_edgeone_static_v1";
+const FAVORITES_STORAGE_KEY = "lvyoumap_favorites_v2";
 
 let myChart = null;
 let currentSelectedProvince = "";
@@ -102,26 +103,12 @@ function loadEcharts() {
 }
 
 async function loadProvinceIndexData() {
-  try {
-    return await fetchJson(`/data/provinces-index.json?v=${STATIC_DATA_VERSION}`);
-  } catch (staticErr) {
-    console.warn("Static province index unavailable, falling back to API:", staticErr);
-    const resJson = await fetchJson("/api/provinces");
-    if (!resJson.success) throw new Error("API province index failed");
-    return resJson.data;
-  }
+  return fetchJson(`/data/provinces-index.json?v=${STATIC_DATA_VERSION}`);
 }
 
 async function loadProvinceDetailData(provinceName) {
   const encodedName = encodeURIComponent(provinceName);
-  try {
-    return await fetchJson(`/data/provinces/${encodedName}.json?v=${STATIC_DATA_VERSION}`);
-  } catch (staticErr) {
-    console.warn(`Static province detail unavailable for ${provinceName}, falling back to API:`, staticErr);
-    const resJson = await fetchJson(`/api/provinces/${encodedName}`);
-    if (!resJson.success) throw new Error(`API province detail failed: ${provinceName}`);
-    return resJson.data;
-  }
+  return fetchJson(`/data/provinces/${encodedName}.json?v=${STATIC_DATA_VERSION}`);
 }
 
 async function loadProvinceListData(provinceName) {
@@ -218,7 +205,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   initAuthSession();
 });
 
-// 从后端接口加载初始数据
+function loadLocalFavorites() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(FAVORITES_STORAGE_KEY) || "[]");
+    return Array.isArray(stored) ? stored : [];
+  } catch (error) {
+    console.warn("Invalid local favorites were ignored:", error);
+    return [];
+  }
+}
+
+function saveLocalFavorites() {
+  localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
+}
+
+// 加载 EdgeOne 静态数据与浏览器本机收藏
 async function loadInitialData() {
   const loaderEl = document.getElementById("map-loader");
   if (loaderEl) {
@@ -226,29 +227,13 @@ async function loadInitialData() {
     loaderEl.style.opacity = "1";
   }
   try {
-    // 1. 获取所有省份轻量级索引数据
+    // 1. 获取所有省份轻量级索引数据。
     window.tourismData = await loadProvinceIndexData();
-
-    // 2. 获取当前用户的收藏夹列表
-    const favResponse = await fetch(`/api/favorites?userId=${userId}&t=${Date.now()}`);
-    const favJson = await favResponse.json();
-    if (favJson.success) {
-      favorites = favJson.data.map(fav => ({
-        id: fav.attractionId,
-        name: fav.attractionName,
-        image: fav.attractionImage,
-        level: fav.level,
-        rating: 5.0,
-        intro: "已收藏景点",
-        price: fav.level || "免费",
-        route: "",
-        reviews: [],
-        provinceId: fav.provinceId
-      }));
-    }
+    // 2. EdgeOne 静态版不伪造云同步，收藏明确保存在当前浏览器。
+    favorites = loadLocalFavorites();
   } catch (err) {
-    console.error("Failed to load initial data from backend:", err);
-    showToast("⚠️ 无法连接后端服务器，请检查网络");
+    console.error("Failed to load static tourism data:", err);
+    showToast("⚠️ 旅游数据加载失败，请刷新页面重试");
   }
 
   // 3. 初始化并渲染地图
@@ -1088,25 +1073,9 @@ async function selectProvince(provinceName) {
   populateProvinceDropdown();
   renderMapWithOptions();
   
-  // 智能实时气象获取（接入 wttr.in 并通过后端进行高保真时辰与季节模拟）
-  (async () => {
-    try {
-      const weatherResponse = await fetch(`/api/weather?province=${encodeURIComponent(provinceName)}`);
-      const weatherJson = await weatherResponse.json();
-      if (weatherJson.success) {
-        const wData = weatherJson.data;
-        document.getElementById("dest-weather-temp").textContent = wData.temp;
-        document.getElementById("dest-weather-cond").textContent = `${wData.cond} · 空气${wData.aqi}`;
-      } else {
-        document.getElementById("dest-weather-temp").textContent = destData.weather.temp;
-        document.getElementById("dest-weather-cond").textContent = `${destData.weather.cond} · 空气${destData.weather.aqi}`;
-      }
-    } catch (weatherErr) {
-      // 离线环境/网络异常时使用本地高精保底数据
-      document.getElementById("dest-weather-temp").textContent = destData.weather.temp;
-      document.getElementById("dest-weather-cond").textContent = `${destData.weather.cond} · 空气${destData.weather.aqi}`;
-    }
-  })();
+  // 使用随版本发布的气候参考数据，避免第三方天气接口成为页面可用性的单点故障。
+  document.getElementById("dest-weather-temp").textContent = destData.weather.temp;
+  document.getElementById("dest-weather-cond").textContent = `${destData.weather.cond} · 空气${destData.weather.aqi}`;
   
   // 最佳时间
   const extraInfo = localCuisineAndItineraries[provinceName];
@@ -1653,58 +1622,52 @@ async function handleSearch(query) {
   }
 
   try {
-    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-    const resJson = await response.json();
-    if (resJson.success) {
-      const results = resJson.data;
-
-      // 只有当查询内容与省份中文名或拼音完全一致（忽略大小写和首尾空格）时，才直接跳转
-      const exactProv = results.find(r => {
-        const queryClean = query.trim().toLowerCase();
-        const provClean = (r.province || "").trim().toLowerCase();
-        const provIdClean = (r.provinceId || "").trim().toLowerCase();
-        return provClean === queryClean || provIdClean === queryClean;
-      });
-      if (exactProv) {
-        selectProvince(exactProv.province);
-        return;
-      }
-
-      // 否则，渲染搜索出的所有景点列表
-      selectedCityFilter = "全部";
-      currentAttractionPage = 1;
-      const filterBar = document.getElementById("city-filter-container");
-      if (filterBar) filterBar.style.display = "none";
-
-      let foundAttractions = [];
-      results.forEach(res => {
-        if (res.attractions) {
-          res.attractions.forEach(attr => {
-            attr.provinceName = res.province; // 标记属于哪个省份
-            foundAttractions.push(attr);
-          });
-        }
-      });
-
-      document.getElementById("panel-empty").style.display = "none";
-      document.getElementById("panel-destination").style.display = "flex";
-      
-      document.getElementById("dest-img").src = "/assets/images/china_relief_map.png";
-      document.getElementById("dest-title").textContent = `搜索: "${query}"`;
-      document.getElementById("dest-desc").textContent = `系统为您在全国范围内检索到 ${foundAttractions.length} 个相关景点。`;
-      document.getElementById("dest-weather-temp").textContent = "--";
-      document.getElementById("dest-weather-cond").textContent = "全国智能搜索模式";
-      document.getElementById("dest-tags-list").innerHTML = `<span class="dest-tag" style="background:var(--accent-teal);color:#fff;">智能检索</span>`;
-
-      renderAttractionList(foundAttractions);
+    const queryClean = query.trim().toLowerCase();
+    const exactProvince = Object.values(window.tourismData || {}).find((province) =>
+      [province.province, province.name, province.id]
+        .filter(Boolean)
+        .some((value) => String(value).trim().toLowerCase() === queryClean),
+    );
+    if (exactProvince) {
+      selectProvince(exactProvince.province);
+      return;
     }
+
+    const searchIndex = await fetchJson(`/data/search-index.json?v=${STATIC_DATA_VERSION}`);
+    const foundAttractions = searchIndex
+      .filter((attraction) => [
+        attraction.province,
+        attraction.provinceId,
+        attraction.name,
+        attraction.city,
+        attraction.level,
+        attraction.intro,
+        attraction.address,
+        ...(Array.isArray(attraction.tags) ? attraction.tags : []),
+      ].some((value) => String(value || "").toLowerCase().includes(queryClean)))
+      .map((attraction) => ({ ...attraction, provinceName: attraction.province }));
+
+    selectedCityFilter = "全部";
+    currentAttractionPage = 1;
+    const filterBar = document.getElementById("city-filter-container");
+    if (filterBar) filterBar.style.display = "none";
+
+    document.getElementById("panel-empty").style.display = "none";
+    document.getElementById("panel-destination").style.display = "flex";
+    document.getElementById("dest-img").src = "/assets/images/china_relief_map.png";
+    document.getElementById("dest-title").textContent = `搜索: "${query}"`;
+    document.getElementById("dest-desc").textContent = `在全国静态数据中检索到 ${foundAttractions.length} 个相关景点。`;
+    document.getElementById("dest-weather-temp").textContent = "--";
+    document.getElementById("dest-weather-cond").textContent = "全国搜索模式";
+    document.getElementById("dest-tags-list").innerHTML = `<span class="dest-tag" style="background:var(--accent-teal);color:#fff;">本地快速检索</span>`;
+    renderAttractionList(foundAttractions);
   } catch (err) {
-    console.error("Search API error:", err);
+    console.error("Static search error:", err);
+    showToast("⚠️ 搜索索引加载失败，请刷新页面重试");
   }
 }
 
-// 7. 收藏夹核心逻辑 (包含离线双向同步机制与脏数据重试队列)
-let unsyncedFavorites = JSON.parse(localStorage.getItem(`unsynced_favs_${userId}`) || "[]");
+// 7. 收藏夹核心逻辑（浏览器本机持久化）
 
 async function toggleFavorite(attraction) {
   const index = favorites.findIndex(f => f.id === attraction.id);
@@ -1725,52 +1688,13 @@ async function toggleFavorite(attraction) {
     };
     
     favorites.push(newFavItem);
-    showToast(`💖 已收藏 【${attraction.name}】(已暂存本地)`);
-    
-    try {
-      const response = await fetch('/api/favorites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: userId,
-          provinceId: currentSelectedProvince || attraction.provinceName || 'china',
-          attractionId: attraction.id,
-          attractionName: attraction.name,
-          attractionImage: attraction.image,
-          level: attraction.level
-        })
-      });
-      const resJson = await response.json();
-      if (resJson.success) {
-        showToast(`💖 收藏 【${attraction.name}】已同步至云端`);
-      } else {
-        markAsUnsynced(attraction.id, 'ADD', attraction);
-      }
-    } catch (err) {
-      console.log("Offline mode: favorite saved locally, queued for sync.");
-      markAsUnsynced(attraction.id, 'ADD', attraction);
-    }
+    showToast(`💖 已收藏 【${attraction.name}】（保存在本机）`);
   } else {
-    const attractionId = attraction.id;
     favorites.splice(index, 1);
-    showToast(`💔 已取消收藏 【${attraction.name}】(本地已更新)`);
-    
-    try {
-      const response = await fetch(`/api/favorites/${encodeURIComponent(attractionId)}?userId=${userId}`, {
-        method: 'DELETE'
-      });
-      const resJson = await response.json();
-      if (resJson.success) {
-        showToast(`💔 取消收藏 【${attraction.name}】已同步至云端`);
-      } else {
-        markAsUnsynced(attractionId, 'DELETE');
-      }
-    } catch (err) {
-      console.log("Offline mode: cancellation queued for sync.");
-      markAsUnsynced(attractionId, 'DELETE');
-    }
+    showToast(`💔 已取消收藏 【${attraction.name}】`);
   }
 
+  saveLocalFavorites();
   updateFavoritesCount();
   renderFavoritesList();
 
@@ -1778,58 +1702,6 @@ async function toggleFavorite(attraction) {
     btn.classList.toggle("active", isAdding);
   });
 }
-
-function markAsUnsynced(id, action, attractionData = null) {
-  unsyncedFavorites = unsyncedFavorites.filter(item => item.id !== id);
-  unsyncedFavorites.push({ id, action, data: attractionData, timestamp: Date.now() });
-  localStorage.setItem(`unsynced_favs_${userId}`, JSON.stringify(unsyncedFavorites));
-}
-
-// 离线队列同步管理器 (网络上线时自动合并触发)
-async function syncOfflineFavorites() {
-  if (unsyncedFavorites.length === 0) return;
-  console.log(`🔄 网络已联通: 正在将 ${unsyncedFavorites.length} 个离线收藏操作同步至服务器...`);
-  
-  const remaining = [];
-  for (const op of unsyncedFavorites) {
-    try {
-      if (op.action === 'ADD') {
-        const response = await fetch('/api/favorites', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: userId,
-            provinceId: 'china',
-            attractionId: op.id,
-            attractionName: op.data.name,
-            attractionImage: op.data.image,
-            level: op.data.level
-          })
-        });
-        const resJson = await response.json();
-        if (!resJson.success) remaining.push(op);
-      } else if (op.action === 'DELETE') {
-        const response = await fetch(`/api/favorites/${encodeURIComponent(op.id)}?userId=${userId}`, {
-          method: 'DELETE'
-        });
-        const resJson = await response.json();
-        if (!resJson.success) remaining.push(op);
-      }
-    } catch (e) {
-      remaining.push(op);
-    }
-  }
-  
-  unsyncedFavorites = remaining;
-  localStorage.setItem(`unsynced_favs_${userId}`, JSON.stringify(unsyncedFavorites));
-  if (unsyncedFavorites.length === 0) {
-    showToast("✨ 离线暂存的数据均已和云端同步成功！");
-  }
-}
-
-// 监听在线状态与定时重试
-window.addEventListener('online', syncOfflineFavorites);
-setInterval(syncOfflineFavorites, 15000);
 
 // 更新收藏数量
 function updateFavoritesCount() {
@@ -3341,6 +3213,20 @@ let currentUsername = localStorage.getItem('map_jwt_username') || '';
 
 function initAuthSession() {
   const profileEl = document.querySelector('.user-profile');
+  const loginModal = document.getElementById('login-modal');
+
+  // EdgeOne 稳定版不提供虚假的云账户能力；收藏仅保存在当前浏览器。
+  if (profileEl) {
+    profileEl.style.cursor = 'pointer';
+    profileEl.title = '收藏保存在当前浏览器';
+    const spanEl = profileEl.querySelector('span');
+    if (spanEl) spanEl.textContent = '本机';
+    profileEl.addEventListener('click', () => showToast('当前为本机模式：收藏保存在此浏览器中'));
+  }
+  if (loginModal) loginModal.remove();
+  return;
+
+  /* Legacy server account flow retained below for local backend reference. */
   if (profileEl) {
     profileEl.style.cursor = 'pointer';
     const spanEl = profileEl.querySelector('span');

@@ -1,0 +1,13 @@
+{
+  "name": "lvyoumap-edgeone",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Static-first EdgeOne deployment for the China tourism map",
+  "scripts": {
+    "build": "node scripts/build_edgeone.js",
+    "preview": "node scripts/serve_static.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

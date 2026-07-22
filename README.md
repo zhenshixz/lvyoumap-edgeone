@@ -1,5 +1,41 @@
 # 🗺️ 中国旅游智能导览地图 (Android Tablet Adapted Version)
 
+## EdgeOne 稳定部署版
+
+本仓库已调整为 **静态优先** 的 EdgeOne Makers/Pages 部署结构：
+
+- `backend/db.json` 仅作为本地数据维护源，不进入线上构建产物。
+- 构建时自动生成 `data/provinces/*.json` 和 `data/search-index.json`，避免任何单文件超过 EdgeOne 的 25 MiB 限制。
+- 线上不依赖 Express、可写文件系统、第三方天气接口或伪云数据库。
+- 收藏保存在当前浏览器的 `localStorage` 中；清理浏览器数据会一并清除收藏。
+- `scripts/build_edgeone.js` 会在发布前检查单文件大小和文件总数，超限时给出明确错误。
+
+### Git 仓库自动部署
+
+EdgeOne 会读取根目录的 `edgeone.json`，使用以下固定配置：
+
+- 安装命令：`npm install --no-audit --no-fund`
+- 构建命令：`npm run build`
+- 输出目录：`dist`
+- Node.js：`20.18.0`
+
+将本次修改提交并推送到 EdgeOne 已连接的分支后，重新部署即可。不要把输出目录改回项目根目录，否则本地维护用的 `backend/db.json` 会再次被纳入部署检查。
+
+### 本机预览
+
+双击 `preview_edgeone.bat`。脚本会检查 Node.js 版本、生成与 EdgeOne 完全相同的 `dist` 产物，再启动 `http://localhost:8080`，同时显示局域网访问地址。
+
+也可以在终端运行：
+
+```powershell
+npm run build
+npm run preview
+```
+
+### 直接上传
+
+先运行 `npm run build`，然后在 EdgeOne 中上传 `dist` 文件夹或把 `dist` 内的内容压缩为 ZIP 后上传。`index.html` 必须位于上传内容最外层。
+
 这是一个专为**安卓平板（Android Tablet）**横屏体验适配的、基于 HTML5 / CSS3 / JavaScript 和 Apache ECharts 的中国动态旅游导览地图。
 
 与传统网页不同，本项目特别进行了**平板触控交互优化**与**离线运行优化**。

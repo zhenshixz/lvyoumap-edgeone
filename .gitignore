@@ -28,3 +28,6 @@ progress.json
 
 # Vercel local state
 .vercel/
+
+# EdgeOne generated deployment output
+dist/
