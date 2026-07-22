@@ -1,0 +1,16 @@
+{
+  "name": "china-tourism-map-backend",
+  "version": "1.0.0",
+  "description": "Backend API for China Tourism Map Web Application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "generate:static-data": "node ../scripts/generate_static_data.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "pinyin-pro": "^3.28.1"
+  }
+}

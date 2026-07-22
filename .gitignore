@@ -1,0 +1,30 @@
+# Dependencies
+backend/node_modules/
+
+# Local browser/session cache
+backend/.xhs_puppeteer_profile/
+
+# Runtime logs and batch progress
+backend/*.log
+backend/*_progress.json
+backend/*_process*.json
+backend/*_stdout.log
+backend/*_stderr.log
+
+# Generated samples, temporary crawl outputs and backups
+backend/*_samples.json
+backend/*_result.json
+backend/*_results.json
+backend/ticket_temp_results.json
+backend/lazy_route_evidence_cache.json
+backend/db.backup*.json
+backend/db.json.backup*.json
+data.js
+travelData.json
+
+# Local screenshots and tool artifacts
+backend/mafengwo.png
+progress.json
+
+# Vercel local state
+.vercel/
