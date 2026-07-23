@@ -6,6 +6,14 @@ const dbPath = path.join(rootDir, 'backend', 'db.json');
 const dataDir = path.join(rootDir, 'data');
 const provincesDir = path.join(dataDir, 'provinces');
 
+function getProvinceDataFile(name, province) {
+  const id = String(province?.id || '').trim().toLowerCase();
+  if (!/^[a-z0-9_-]+$/.test(id)) {
+    throw new Error(`Province "${name}" must have an ASCII id before static data can be generated.`);
+  }
+  return `${id}.json`;
+}
+
 function writeJson(filePath, value, { bom = false } = {}) {
   const tempPath = `${filePath}.tmp`;
   const json = JSON.stringify(value)
@@ -32,6 +40,7 @@ function buildProvinceIndex(provinces) {
       bestTime: province.bestTime,
       image: province.image,
       attractionCount: Array.isArray(province.attractions) ? province.attractions.length : 0,
+      dataFile: getProvinceDataFile(name, province),
     };
   }
 
@@ -68,12 +77,13 @@ function main() {
   const db = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
   const provinces = db.provinces || {};
 
+  fs.rmSync(provincesDir, { recursive: true, force: true });
   fs.mkdirSync(provincesDir, { recursive: true });
   writeJson(path.join(dataDir, 'provinces-index.json'), buildProvinceIndex(provinces), { bom: true });
   writeJson(path.join(dataDir, 'search-index.json'), buildSearchIndex(provinces));
 
   for (const [name, province] of Object.entries(provinces)) {
-    writeJson(path.join(provincesDir, `${name}.json`), province, { bom: true });
+    writeJson(path.join(provincesDir, getProvinceDataFile(name, province)), province, { bom: true });
   }
 
   console.log(`Generated ${Object.keys(provinces).length} province files and search index in ${path.relative(rootDir, dataDir)}`);

@@ -30,7 +30,7 @@ const hotCitiesData = [
 
 // 口碑美食与旅行计划数据库 (由后端数据接口懒加载填充)
 let localCuisineAndItineraries = {};
-const STATIC_DATA_VERSION = "20260722_edgeone_static_v1";
+const STATIC_DATA_VERSION = "20260723_edgeone_ascii_v2";
 const FAVORITES_STORAGE_KEY = "lvyoumap_favorites_v2";
 
 let myChart = null;
@@ -107,8 +107,12 @@ async function loadProvinceIndexData() {
 }
 
 async function loadProvinceDetailData(provinceName) {
-  const encodedName = encodeURIComponent(provinceName);
-  return fetchJson(`/data/provinces/${encodedName}.json?v=${STATIC_DATA_VERSION}`);
+  const provinceIndex = window.tourismData || await loadProvinceIndexData();
+  const dataFile = provinceIndex?.[provinceName]?.dataFile;
+  if (!dataFile || !/^[a-z0-9_-]+\.json$/.test(dataFile)) {
+    throw new Error(`Static data file is unavailable for province: ${provinceName}`);
+  }
+  return fetchJson(`/data/provinces/${dataFile}?v=${STATIC_DATA_VERSION}`);
 }
 
 async function loadProvinceListData(provinceName) {

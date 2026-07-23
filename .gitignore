@@ -31,3 +31,5 @@ progress.json
 
 # EdgeOne generated deployment output
 dist/
+lvyoumap-edgeone-dist.zip
+lvyoumap-edgeone-dist.tmp.zip
